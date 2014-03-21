@@ -1,3 +1,3 @@
-make
-
-ruby myl.tab.rb alg.myl
+== Launch.
+  make
+  ruby myl.tab.rb alg.myl
