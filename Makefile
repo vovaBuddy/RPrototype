@@ -1,4 +1,4 @@
 all: 
-	racc calc3.racc
-	rex  calc3.rex
+	racc myl.racc
+	rex  myl.rex
 
