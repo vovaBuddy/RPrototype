@@ -1,0 +1,285 @@
+#
+# A simple calculator, version 3.
+#
+
+class Calculator3
+  prechigh
+    nonassoc UMINUS
+    left '*' '/'
+    left '+' '-'
+  preclow
+  token exp 
+  token WORD
+  token SGNL VAR ARRAY
+  token NUMBER 
+  token TOKENDEF TOKENEND TOKENELSE TOKENIF TOKENCASE
+  token TOKFUNCTION TOKENVAR TOKENFOREACH TOKENSWITCH
+rule
+  target  : translation_unit
+          | /* none */ { 0 }
+
+
+translation_unit
+  : declaration_unit
+  | translation_unit declaration_unit
+  | exp '\n'    { }
+
+declaration_unit
+  : function_definition
+  
+
+function_definition 
+  : TOKFUNCTION WORD '(' arguments ')' body TOKENEND 
+    { 
+      p 'debug: function definition finded'
+      file = File.new('./' + val[1] + '.h', 'w')
+      file.puts "void " + val[1] + "(signal_t s) {\n\tint i;\n "+val[5]+"\n} "
+      file.close
+    }
+
+arguments
+  : argument
+  | arguments ',' argument
+  
+
+argument
+  : WORD 
+    {
+      $SymTable.push(val[0], 'SGNL', nil, nil, nil)
+      result = val[0]
+    }  
+
+body
+  : body_unit 
+    {
+      p "debug: body_unit finded - " + val[0]
+    }
+  | body body_unit 
+    { 
+      result =  "\t" + val[0] +"\n\t" + val[1]
+      p "debug: body body_unit finded -"+ result +"\n"
+
+    }
+
+
+
+body_unit
+  : definition_unit 
+    {
+      p "debug: definition_unit fined - #{val[0]}\n"
+    }
+
+  | foreach_block
+  | operations
+  | condition_block
+  | switch_block
+
+switch_block 
+  : TOKENSWITCH SGNL when_block TOKENEND
+    {
+      result = "switch(#{val[1]}) {\n\t#{val[2]}\n\t}" 
+    }
+
+when_block
+  : when_item
+  | when_block when_item
+    {
+      result = "#{val[0]} \n\t#{val[1]}" 
+    }
+
+when_item
+  : TOKENCASE compar_item body
+    {
+      result = "case #{val[1]}: \n\t#{val[2]}\n\tbreak;" 
+    }
+  | TOKENELSE  body
+    {
+      result = "case default: \n\t#{val[1]}\n\tbreak;"
+    }
+
+condition_block
+ : TOKENIF condition body TOKENEND 
+   { 
+    result = "if(#{val[1]}) {\n\t\t#{val[2]}\n\t}"
+   }
+  | TOKENIF condition body TOKENELSE body TOKENEND 
+   { 
+    result = "if(#{val[1]}) {\n\t\t#{val[2]}\n\t}\n\telse {\n\t\t#{val[4]}\n\t}"
+   }
+
+condition
+ : condition_unit
+ | condition_item logic_tokin condition_item 
+   {
+     result = "#{val[0]} #{val[1]} #{val[2]}"
+   }
+
+condition_item
+  : condition
+  | '(' condition ')' { result = "(#{val[1]})"}
+
+
+logic_tokin
+  : '&''&' { result = "&&"}
+  | '|''|' { result = "||"}
+
+condition_unit
+ : compar_item compar_logic compar_item
+   {
+      result = "#{val[0]} #{val[1]} #{val[2]}" 
+   }
+
+compar_item
+  : SGNL { result = $SymTable.get_by_name(val[0]).translate_to }
+  | VAR { result = val[0] }
+  | NUMBER { result = val[0].to_s }
+
+compar_logic
+  : '<' { result = '<'}
+  | '>' { result = '>'}
+  | '>''=' {result = '>='}
+  | '<''=' {result = '<='}
+  | '!''=' {result = '!='}
+  | '=''=' {result = '=='}
+
+operations
+  : SGNL '=' NUMBER 
+    {
+      sym = $SymTable.get_by_name(val[0])
+      result = "#{sym.translate_to} = #{val[2].to_s};" 
+    }
+  | SGNL '=' SGNL
+    {
+      sym1 = $SymTable.get_by_name(val[0])
+      sym2 = $SymTable.get_by_name(val[2])
+      result = "#{sym1.translate_to} = #{sym2.translate_to};" 
+    }
+  | SGNL '=' VAR
+    {
+      sym1 = $SymTable.get_by_name(val[0])
+      result = "#{sym1.translate_to} = #{val[2]};" 
+    }
+  | VAR '=' SGNL
+  | VAR '=' VAR
+  | VAR '=' NUMBER
+
+  # ToDo: 
+
+
+foreach_block
+  : TOKENFOREACH '(' tmp_var ')' body TOKENEND
+  {
+    values = val[2].split(',')
+    arr = $SymTable.get_by_name(values[1])
+    result = "for (i=0; i<#{arr.var};i++){\n\t#{val[4]}\n\t}"
+    $SymTable.remove_by_name(values[0])
+    p "debug: foreach_block finded for array - #{val[4]}"
+  }
+
+tmp_var
+  : WORD ':' ARRAY
+  {
+    $SymTable.push(val[0], 'SGNL', nil, "signalTable[#{val[2]}[i]]", 0)
+    result = val[0] + ',' + val[2]
+  }
+
+definition_unit
+  : TOKENDEF def_list 
+    { 
+      result = "enum {\n\t\t#{val[1]}\n\t};"
+      p "debug: DEFTOKEN def_list  - %s #{result}\n"
+    }
+  | TOKENVAR var_list
+    {
+      result = val[1]
+      p "debug: TOKENVAR var_list  - %s #{result}\n"
+    }
+
+var_list 
+  : var_item
+  | var_list ',' var_item
+    {
+      result = "#{val[0]}\n\t#{val[2]}"
+    }
+
+var_item
+  : WORD 
+    { 
+      $SymTable.push(val[0], 'VAR', nil, nil, 0)
+      result = "int #{val[0]} = 0;"
+    }
+  | WORD '=' NUMBER 
+    { 
+      $SymTable.push(val[0], 'VAR', nil, nil, val[2])
+      result = "int #{val[0]} = #{val[2].to_s};"
+    }
+  | WORD '=' VAR 
+    { 
+      $SymTable.push(val[0], 'VAR', nil, nil, $SymTable.get_by_name(val[2]).var)
+      result = "int #{val[0]} = #{val[2]};"
+    }
+  | WORD '=' SGNL
+    { 
+      s = $SymTable.get_by_name(val[2])
+      $SymTable.push(val[0], 'VAR', nil, nil, s.var)    
+      result = "int #{val[0]} = #{s.translate_to};"
+    }
+  | WORD '=' '[' set_items']' 
+    { 
+      $SymTable.push(val[0], 'ARRAY', nil, nil, val[3].split(',').size)    
+      result = "int #{val[0]}[] = {#{val[3]}};"
+    }
+
+set_items
+  : SGNL
+    {
+      result = val[0]
+      p "debug: SGNL  - #{result}\n"  
+    }
+
+  | set_items ',' SGNL
+    {
+      result = val[0] + ', ' + val[2]
+      p "debug: set_items SGNL  - #{result}\n"  
+    }
+
+def_list
+  : def_item
+  | def_list ',' def_item 
+    { 
+      result = "#{val[0]},\n\t\t#{val[2]}"
+    }
+
+def_item
+  : WORD
+    {   
+      number = signals_number(val[0])
+      if number.nil?
+       raise "\nSyntaxError: #{@filename}:#{lineno} Сигнал с именем '#{val[0]}' не определен в таблице сигналов\n"
+      end
+      result = val[0] + " = " + number.to_s
+      p "debug: def_item WORD - #{val[0]} \n"
+      # смотреть из файла номер сигнала
+      $SymTable.push(val[0], 'SGNL', nil, "signalTable[#{val[0]}]", number)
+    }
+
+end
+
+---- header ----
+#
+# generated by racc
+#
+require './calc3.rex'
+
+---- inner ----
+
+---- footer ----
+
+calc = Calculator3.new
+@filename = ARGV.shift
+begin
+  calc.scan_file @filename
+rescue Exception
+  puts $!
+end
+
